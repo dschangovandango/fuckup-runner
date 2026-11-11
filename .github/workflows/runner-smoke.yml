@@ -1,0 +1,23 @@
+name: runner-smoke
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Django GithubRunnerJob UUID
+        required: true
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: OIDC exchange
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+        run: |
+          set -euo pipefail
+          OIDC="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=fuckup-runner" | jq -r .value)"
+          RESP="$(curl -fsS -X POST https://dev.148-251-186-103.sslip.io/api/gh-runner/exchange -H "Content-Type: application/json" --data "{\"job_id\":\"${JOB_ID}\",\"oidc_token\":\"${OIDC}\"}")"
+          echo "${RESP}" | jq -e '.ok == true' >/dev/null
+          echo "runner-auth-ok"
