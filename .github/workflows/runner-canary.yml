@@ -1,0 +1,28 @@
+name: runner-canary
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Django GithubRunnerJob UUID
+        required: true
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Private bundle and source canary
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+        run: |
+          set -euo pipefail
+          API="https://dev.148-251-186-103.sslip.io/api/gh-runner"
+          OIDC="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=fuckup-runner" | jq -r .value)"
+          RESP="$(curl -fsS -X POST "$API/exchange" -H "Content-Type: application/json" --data "{\"job_id\":\"${JOB_ID}\",\"oidc_token\":\"${OIDC}\"}")"
+          TOKEN="$(printf '%s' "$RESP" | jq -r .job_token)"
+          test -n "$TOKEN"
+          mkdir -p /tmp/runner
+          curl -fsS -H "Authorization: Bearer $TOKEN" "$API/jobs/$JOB_ID/bundle" -o /tmp/runner-bundle.tar.gz
+          tar -xzf /tmp/runner-bundle.tar.gz -C /tmp/runner
+          GH_API="$API" GH_JOB_ID="$JOB_ID" GH_JOB_TOKEN="$TOKEN" PYTHONPATH=/tmp/runner python -m pipeline.runner.gh_canary
