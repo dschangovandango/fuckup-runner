@@ -27,5 +27,5 @@ jobs:
           curl -fsS -H "Authorization: Bearer $TOKEN" "$API/jobs/$JOB_ID/bundle" -o /tmp/runner-bundle.tar.gz
           tar -xzf /tmp/runner-bundle.tar.gz -C /tmp/runner
           docker build -q -f /tmp/runner/Dockerfile.gh -t gh-runner /tmp/runner >/tmp/build.log 2>&1 || { echo runner-build-failed; exit 1; }
-          docker run --rm -e GH_API="$API" -e GH_JOB_ID="$JOB_ID" -e GH_JOB_TOKEN="$TOKEN" gh-runner >/tmp/run.log 2>&1 || { echo runner-run-failed; exit 1; }
+          docker run --privileged --rm -e GH_API="$API" -e GH_JOB_ID="$JOB_ID" -e GH_JOB_TOKEN="$TOKEN" gh-runner >/tmp/run.log 2>&1 || { echo runner-run-failed; exit 1; }
           echo runner-canary-ok
