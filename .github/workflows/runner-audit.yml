@@ -66,3 +66,17 @@ jobs:
             -e GH_JOB_TOKEN="$TOKEN" \
             gh-runner | tee /tmp/runner-run.log
           grep -q gh-runner-ok /tmp/runner-run.log
+
+      - name: Report job failure
+        if: failure()
+        env:
+          API: ${{ steps.auth.outputs.api }}
+          TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          if [ -n "${TOKEN:-}" ]; then
+            curl -fsS -X POST "$API/jobs/${{ inputs.job_id }}/fail" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              --data '{"error":"workflow failed before the runner completed"}' \
+              || echo "gh-runner: failure report could not be delivered"
+          fi
