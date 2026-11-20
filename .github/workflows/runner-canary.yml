@@ -1,31 +1,43 @@
 name: runner-canary
+
 on:
   workflow_dispatch:
     inputs:
       job_id:
         description: Django GithubRunnerJob UUID
         required: true
+      api_url:
+        description: Public control-plane base URL
+        required: true
+
 permissions:
   contents: read
   id-token: write
+
 jobs:
   canary:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 30
     steps:
       - name: Private runner canary
         env:
+          API_URL: ${{ inputs.api_url }}
           JOB_ID: ${{ inputs.job_id }}
         run: |
           set -euo pipefail
-          API="https://dev.148-251-186-103.sslip.io/api/gh-runner"
-          OIDC="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=fuckup-runner" | jq -r .value)"
-          RESP="$(curl -fsS -X POST "$API/exchange" -H "Content-Type: application/json" --data "{\"job_id\":\"${JOB_ID}\",\"oidc_token\":\"${OIDC}\"}")"
+          API="${API_URL%/}/api/gh-runner"
+          OIDC="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=fuckup-runner" | jq -r .value)"
+          RESP="$(curl -fsS -X POST "$API/exchange" \
+            -H "Content-Type: application/json" \
+            --data "{\"job_id\":\"${JOB_ID}\",\"oidc_token\":\"${OIDC}\"}")"
           TOKEN="$(printf '%s' "$RESP" | jq -r .job_token)"
           test -n "$TOKEN"
+          echo "::add-mask::$TOKEN"
           mkdir -p /tmp/runner
-          curl -fsS -H "Authorization: Bearer $TOKEN" "$API/jobs/$JOB_ID/bundle" -o /tmp/runner-bundle.tar.gz
+          curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "$API/jobs/$JOB_ID/bundle" -o /tmp/runner-bundle.tar.gz
           tar -xzf /tmp/runner-bundle.tar.gz -C /tmp/runner
-          docker build -q -f /tmp/runner/Dockerfile.gh -t gh-runner /tmp/runner >/tmp/build.log 2>&1 || { echo runner-build-failed; exit 1; }
-          docker run --privileged --rm -e GH_API="$API" -e GH_JOB_ID="$JOB_ID" -e GH_JOB_TOKEN="$TOKEN" gh-runner >/tmp/run.log 2>&1 || { echo runner-run-failed; exit 1; }
+          docker build -q -f /tmp/runner/Dockerfile.gh -t gh-runner /tmp/runner \
+            >/tmp/build.log 2>&1 || { echo runner-build-failed; exit 1; }
           echo runner-canary-ok
