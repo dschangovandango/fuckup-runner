@@ -1,0 +1,68 @@
+name: runner-audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Django GithubRunnerJob UUID
+        required: true
+      api_url:
+        description: Public control-plane base URL
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Exchange OIDC token
+        id: auth
+        env:
+          API_URL: ${{ inputs.api_url }}
+          JOB_ID: ${{ inputs.job_id }}
+        run: |
+          set -euo pipefail
+          API="${API_URL%/}/api/gh-runner"
+          OIDC="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=fuckup-runner" | jq -r .value)"
+          RESP="$(curl -fsS -X POST "$API/exchange" \
+            -H "Content-Type: application/json" \
+            --data "{\"job_id\":\"${JOB_ID}\",\"oidc_token\":\"${OIDC}\"}")"
+          TOKEN="$(printf '%s' "$RESP" | jq -r .job_token)"
+          test -n "$TOKEN"
+          echo "::add-mask::$TOKEN"
+          echo "api=$API" >> "$GITHUB_OUTPUT"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Download private runner bundle
+        env:
+          API: ${{ steps.auth.outputs.api }}
+          TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/runner
+          curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "$API/jobs/${{ inputs.job_id }}/bundle" -o /tmp/runner-bundle.tar.gz
+          tar -xzf /tmp/runner-bundle.tar.gz -C /tmp/runner
+
+      - name: Build runner image
+        run: |
+          set -euo pipefail
+          docker build -q -f /tmp/runner/Dockerfile.gh -t gh-runner /tmp/runner
+
+      - name: Run audit
+        env:
+          API: ${{ steps.auth.outputs.api }}
+          TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          docker run --privileged --rm \
+            -e GH_API="$API" \
+            -e GH_JOB_ID="${{ inputs.job_id }}" \
+            -e GH_JOB_TOKEN="$TOKEN" \
+            gh-runner | tee /tmp/runner-run.log
+          grep -q gh-runner-ok /tmp/runner-run.log
