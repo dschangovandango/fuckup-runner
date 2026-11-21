@@ -25,8 +25,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     corepack enable && \
     corepack prepare pnpm@latest --activate && \
-    npm install -g yarn && \
-    node --version && npm --version && pnpm --version
+    corepack prepare yarn@stable --activate && \
+    node --version && npm --version && pnpm --version && yarn --version
 
 # Rust stable (cargo, rustc, rustfmt, clippy).
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh && \
