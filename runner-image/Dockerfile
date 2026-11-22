@@ -61,12 +61,12 @@ RUN python3 -m pip install --break-system-packages --no-cache-dir \
 
 # EVM fuzzers used by the audit toolset.
 RUN mkdir -p /opt/fuzz /usr/local/bin && \
-    curl -fsSL -o /tmp/echidna.zip \
-      https://github.com/crytic/echidna/releases/latest/download/echidna-x86_64-linux.zip && \
-    unzip -o /tmp/echidna.zip echidna -d /opt/fuzz >/dev/null && \
+    curl -fsSL -o /tmp/echidna.tar.gz \
+      https://github.com/crytic/echidna/releases/download/v2.4.0/echidna-2.4.0-x86_64-linux.tar.gz && \
+    tar -xzf /tmp/echidna.tar.gz -C /opt/fuzz && \
     chmod +x /opt/fuzz/echidna && ln -sf /opt/fuzz/echidna /usr/local/bin/echidna && \
     curl -fsSL -o /tmp/medusa.tar.gz \
-      https://github.com/crytic/medusa/releases/latest/download/medusa-linux-x86_64.tar.gz && \
+      https://github.com/crytic/medusa/releases/download/v1.5.1/medusa-linux-x64.tar.gz && \
     tar -xzf /tmp/medusa.tar.gz -C /opt/fuzz && \
     chmod +x /opt/fuzz/medusa && ln -sf /opt/fuzz/medusa /usr/local/bin/medusa && \
     echidna --version && medusa --version
