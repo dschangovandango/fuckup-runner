@@ -52,7 +52,10 @@ jobs:
       - name: Build runner image
         run: |
           set -euo pipefail
-          docker build -q -f /tmp/runner/Dockerfile.gh -t gh-runner /tmp/runner
+          docker build -f /tmp/runner/Dockerfile.gh -t gh-runner /tmp/runner \
+            2>&1 | tee /tmp/runner-build.log
+          grep -q 'naming to' /tmp/runner-build.log || \
+            { echo runner-build-failed; tail -n 60 /tmp/runner-build.log; exit 1; }
 
       - name: Run audit
         env:
@@ -73,10 +76,19 @@ jobs:
           API: ${{ steps.auth.outputs.api }}
           TOKEN: ${{ steps.auth.outputs.token }}
         run: |
+          # The real cause used to be lost: the build was quiet and the error
+          # was a fixed string. Ship the tail of whichever log exists.
+          ERR="workflow failed before the runner completed"
+          for f in /tmp/runner-build.log /tmp/runner-run.log; do
+            if [ -s "$f" ]; then
+              ERR="$ERR | $(basename "$f"): $(tail -n 25 "$f" | tr '\n' ' ' | cut -c1-1800)"
+            fi
+          done
           if [ -n "${TOKEN:-}" ]; then
+            PAYLOAD="$(ERR="$ERR" python3 -c 'import json,os;print(json.dumps({"error":os.environ["ERR"][:3900]}))')"
             curl -fsS -X POST "$API/jobs/${{ inputs.job_id }}/fail" \
               -H "Authorization: Bearer $TOKEN" \
               -H "Content-Type: application/json" \
-              --data '{"error":"workflow failed before the runner completed"}' \
+              --data "$PAYLOAD" \
               || echo "gh-runner: failure report could not be delivered"
           fi
